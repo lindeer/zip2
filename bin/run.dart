@@ -118,6 +118,59 @@ const int _endOfCentralDirectoryBaseSize = 22; // Without comment
 const int _dataDescriptorSize = 12; // CRC-32, compressed size, uncompressed size (no signature)
 const int _dataDescriptorWithSignatureSize = 16; // With signature
 
+final class _ZipEncoder extends StreamTransformerBase<List<int>, List<int>> {
+  int? _uncompressSize;
+  int? _crc;
+  Completer<int>? _sizeCompleter;
+  Completer<int>? _crcCompleter;
+
+
+  Future<int> get uncompressedSize {
+    if (_uncompressSize == null) {
+      final c = _sizeCompleter ??= Completer<int>();
+      return c.future;
+    } else {
+      return Future.value(_uncompressSize);
+    }
+  }
+
+  Future<int> get crc {
+    if (_crc == null) {
+      final c = _crcCompleter ??= Completer<int>();
+      return c.future;
+    } else {
+      return Future.value(_crc);
+    }
+  }
+
+  @override
+  Stream<List<int>> bind(Stream<List<int>> bytes) {
+    // Create a controller for the compressed data stream from the encoder
+    final ctrl = StreamController<List<int>>();
+    // Set up the ZLibEncoder for chunked conversion
+    final encoder = ZLibEncoder(raw: true);
+    final sink = encoder.startChunkedConversion(ctrl.sink);
+    _pipe(bytes, sink);
+    return ctrl.stream;
+  }
+
+  Future<void> _pipe(Stream<List<int>> bytes, Sink<List<int>> sink) async {
+    int uncompressedSize = 0;
+    int crc = 0xFFFFFFFF; // Initialize CRC-32 calculation
+    await for (final chunk in bytes) {
+      uncompressedSize += chunk.length;
+      crc = Crc32.update(crc, chunk);
+      sink.add(chunk); // Send chunk to compressor
+    }
+    crc ^= 0xFFFFFFFF; // Finalize CRC-32 value
+    sink.close(); // Signal end of input to compressor
+    _uncompressSize = uncompressedSize;
+    _crc = crc;
+    _sizeCompleter?.complete(uncompressedSize);
+    _crcCompleter?.complete(crc);
+  }
+}
+
 /// A utility class to handle Zipping and Unzipping of file entries.
 class ZipPackage {
   /// Transforms a stream of [ZipFileEntry] objects into a stream of raw bytes
@@ -143,37 +196,6 @@ class ZipPackage {
       final List<int> fileNameBytes = utf8.encode(fileName);
       final int fileNameLength = fileNameBytes.length;
 
-      int uncompressedSize = 0;
-      int crc = 0xFFFFFFFF; // Initialize CRC-32 calculation
-      final BytesBuilder compressedBytesBuilder = BytesBuilder(); // To collect compressed data
-
-      // Create a controller for the compressed data stream from the encoder
-      final StreamController<List<int>> compressedStreamController = StreamController<List<int>>();
-
-      // Set up the ZLibEncoder for chunked conversion
-      final ZLibEncoder encoder = ZLibEncoder(raw: true);
-      final ByteConversionSink conversionSink = encoder.startChunkedConversion(compressedStreamController.sink);
-
-      // Pipe the uncompressed data through the CRC calculator and into the compressor
-      await for (final dataChunk in entry.data) {
-        uncompressedSize += dataChunk.length;
-        crc = Crc32.update(crc, dataChunk);
-        conversionSink.add(dataChunk); // Send chunk to compressor
-      }
-      crc ^= 0xFFFFFFFF; // Finalize CRC-32 value
-      conversionSink.close(); // Signal end of input to compressor
-
-      // Collect all compressed chunks into a single list
-      await for (final compressedChunk in compressedStreamController.stream) {
-        compressedBytesBuilder.add(compressedChunk);
-      }
-      final Uint8List compressedData = compressedBytesBuilder.takeBytes();
-      final int compressedSize = compressedData.length;
-
-      // General purpose bit flag: 0x0008 (bit 3 set) indicates that
-      // the CRC-32, compressed size, and uncompressed size will be written
-      // in a Data Descriptor after the compressed data, instead of in the
-      // Local File Header.
       final int generalPurposeBitFlag = 0x0008;
 
       // --- Construct Local File Header ---
@@ -209,10 +231,20 @@ class ZipPackage {
 
       final int localHeaderSize = localHeaderBuilder.length;
       yield localHeaderBuilder.takeBytes(); // Output the Local File Header bytes
-      yield compressedData; // Output the compressed file data bytes
+
+      final encoder = _ZipEncoder();
+      final dataStream = entry.data.transform(encoder);
+      final uncompressedSize = await encoder.uncompressedSize;
+      final crc = await encoder.crc;
+
+      int compressedSize = 0;
+      await for (final chunk in dataStream) {
+        compressedSize += chunk.length;
+        yield chunk;
+      }
 
       // Update the current offset in the ZIP file
-      currentOffset += localHeaderSize + compressedData.length;
+      currentOffset += localHeaderSize + compressedSize;
 
       // --- Construct Data Descriptor ---
       // This immediately follows the compressed data for files with bit 3 set
@@ -237,7 +269,7 @@ class ZipPackage {
           lastModifiedTime: dosTime,
           lastModifiedDate: dosDate,
           // Offset of the Local File Header for this entry
-          localHeaderOffset: currentOffset - localHeaderSize - compressedData.length - _dataDescriptorWithSignatureSize,
+          localHeaderOffset: currentOffset - localHeaderSize - compressedSize - _dataDescriptorWithSignatureSize,
         ),
       );
     }
