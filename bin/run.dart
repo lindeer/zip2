@@ -354,9 +354,12 @@ class ZipPackage {
     // For practical purposes and assuming no very large comments, a shorter backward search might suffice,
     // but this range ensures robust EOCD discovery.
     final int searchStart = fullZipBytes.length - _endOfCentralDirectoryBaseSize - 65535;
+    print("!!!!!!! start=$searchStart, full=${fullZipBytes.length}");
     for (int i = fullZipBytes.length - _endOfCentralDirectoryBaseSize; i >= searchStart && i >= 0; i--) {
       try {
-        if (byteData.getUint32(i, Endian.little) == _endOfCentralDirectorySignature) {
+        final sig = byteData.getUint32(i, Endian.little);
+        print("-------- i=$i, sig=$sig, hex=0x${sig.toRadixString(16)}");
+        if (sig == _endOfCentralDirectorySignature) {
           eocdOffset = i;
           break;
         }
@@ -366,6 +369,7 @@ class ZipPackage {
       }
     }
 
+    print("!!!!!!!! size=${fullZipBytes.length}, start=$searchStart, offset=$eocdOffset");
     if (eocdOffset == -1) {
       throw FormatException('End of Central Directory Record not found.');
     }
@@ -374,6 +378,7 @@ class ZipPackage {
     final int centralDirectorySize = byteData.getUint32(eocdOffset + 12, Endian.little);
     final int centralDirectoryOffset = byteData.getUint32(eocdOffset + 16, Endian.little);
     final int numberOfEntries = byteData.getUint16(eocdOffset + 10, Endian.little);
+    print("!!!!!!!! centralDirectorySize=$centralDirectorySize, centralDirectoryOffset=$centralDirectoryOffset, numberOfEntries=$numberOfEntries");
 
     // Iterate through each entry in the Central Directory
     int currentCentralDirectoryOffset = centralDirectoryOffset;
@@ -394,12 +399,14 @@ class ZipPackage {
       final int fileCommentLength = byteData.getUint16(currentCentralDirectoryOffset + 32, Endian.little);
       final int localHeaderOffset = byteData.getUint32(currentCentralDirectoryOffset + 42, Endian.little);
 
+      print("compressionMethod=$compressionMethod,lastModifiedTime=$lastModifiedTime,lastModifiedDate=$lastModifiedDate,crc32=$crc32,compressedSize=$compressedSize,uncompressedSize=$uncompressedSize,fileNameLength=$fileNameLength,extraFieldLength=$extraFieldLength,fileCommentLength=$fileCommentLength,localHeaderOffset=$localHeaderOffset");
       // Extract file name
       final List<int> fileNameBytes = fullZipBytes.sublist(
         currentCentralDirectoryOffset + _centralDirectoryFileHeaderBaseSize,
         currentCentralDirectoryOffset + _centralDirectoryFileHeaderBaseSize + fileNameLength,
       );
       final String fileName = utf8.decode(fileNameBytes);
+      print("fileName=$fileName");
 
       // Validate Local File Header signature at its offset
       final int actualLocalHeaderOffset = localHeaderOffset;
@@ -412,6 +419,7 @@ class ZipPackage {
       final int localExtraFieldLength = byteData.getUint16(actualLocalHeaderOffset + 28, Endian.little);
       final int dataStartOffset = actualLocalHeaderOffset + _localFileHeaderBaseSize + localFileNameLength + localExtraFieldLength;
 
+      print("localFileNameLength=$localFileNameLength, localExtraFieldLength=$localExtraFieldLength, dataStartOffset=$dataStartOffset");
       // Determine if a Data Descriptor is present (bit 3 of general purpose bit flag)
       final int generalPurposeBitFlag = byteData.getUint16(actualLocalHeaderOffset + 6, Endian.little);
       final bool hasDataDescriptor = (generalPurposeBitFlag & 0x0008) != 0;
