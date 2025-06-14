@@ -484,3 +484,92 @@ class _CentralDirectoryRecord {
     required this.localHeaderOffset,
   });
 }
+
+void main(List<String> argv) async {
+  dryTest();
+}
+
+void unzipFiles(List<String> files) async {
+  final zip = ZipPackage();
+  for (final f in files) {
+    final Stream<List<int>> stream = File(f).openRead();
+    final entries = zip.unzip(stream);
+    await for (final entry in entries) {
+      print('Unzipping entry: ${entry.name}');
+      print('  Compression Method: ${entry.compressionMethod == 8 ? "DEFLATED" : "STORED"}');
+      print('  CRC-32: 0x${entry.crc32?.toRadixString(16).padLeft(8, '0')}');
+      print('  Uncompressed Size: ${entry.uncompressedSize} bytes');
+      print('  Compressed Size: ${entry.compressedSize} bytes');
+      print('  Last Modified: ${entry.lastModified}');
+
+      final dataBytes = await entry.data.fold<BytesBuilder>(BytesBuilder(), (builder, chunk) => builder..add(chunk));
+      final String content = utf8.decode(dataBytes.takeBytes());
+      print('  Content:\n$content');
+      print('---');
+    }
+  }
+}
+
+void dryTest() async {
+  final zipPackage = ZipPackage();
+
+  // Create some dummy file entries
+  final entriesToZip = [
+    ZipFileEntry(
+      name: 'hello.txt',
+      data: Stream.fromIterable([
+        utf8.encode('Hello, Dart Zip Package!'),
+      ]),
+      lastModified: DateTime.now(),
+      compressionMethod: 8, // DEFLATED
+    ),
+    ZipFileEntry(
+      name: 'empty.txt',
+      data: Stream.fromIterable([
+        Uint8List(0), // Empty file
+      ]),
+      lastModified: DateTime.now(),
+      compressionMethod: 0, // STORED (no compression)
+    ),
+  ];
+
+  // Create a stream from your list of entries
+  final Stream<ZipFileEntry> entryStream = Stream.fromIterable(entriesToZip);
+
+  // Zip the files
+  final Stream<List<int>> zippedBytesStream = zipPackage.zip(entryStream);
+
+  // Write the zipped bytes to a file
+  final File zipFile = File('example.zip');
+  final IOSink sink = zipFile.openWrite();
+  await for (final chunk in zippedBytesStream) {
+    sink.add(chunk);
+  }
+  await sink.close();
+  print('Successfully created example.zip');
+
+  // --- Example for Unzipping ---
+  print('\nAttempting to unzip example.zip...');
+  final File inputZipFile = File('example.zip');
+  if (await inputZipFile.exists()) {
+    final Stream<List<int>> zipFileBytesStream = inputZipFile.openRead();
+    final Stream<ZipFileEntry> unzippedEntriesStream = zipPackage.unzip(zipFileBytesStream);
+
+    await for (final entry in unzippedEntriesStream) {
+      print('Unzipped entry: ${entry.name}');
+      print('  Compression Method: ${entry.compressionMethod == 8 ? "DEFLATED" : "STORED"}');
+      print('  CRC-32: 0x${entry.crc32?.toRadixString(16).padLeft(8, '0')}');
+      print('  Uncompressed Size: ${entry.uncompressedSize} bytes');
+      print('  Compressed Size: ${entry.compressedSize} bytes');
+      print('  Last Modified: ${entry.lastModified}');
+
+      final dataBytes = await entry.data.fold<BytesBuilder>(BytesBuilder(), (builder, chunk) => builder..add(chunk));
+      final String content = utf8.decode(dataBytes.takeBytes());
+      print('  Content:\n$content');
+      print('---');
+    }
+    print('Unzipping complete.');
+  } else {
+    print('example.zip not found.');
+  }
+}
