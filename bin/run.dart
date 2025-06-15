@@ -172,6 +172,31 @@ final class _ZipEncoder extends StreamTransformerBase<List<int>, List<int>> {
   }
 }
 
+
+final class _ZipDecoder extends StreamTransformerBase<List<int>, List<int>> {
+  final bool compressed;
+
+  _ZipDecoder(this.compressed);
+
+  @override
+  Stream<List<int>> bind(Stream<List<int>> bytes) {
+    if (!compressed) {
+      return bytes;
+    }
+    final decoder = ZLibDecoder(raw: compressed);
+    final ctrl = StreamController<List<int>>();
+    final sink = decoder.startChunkedConversion(ctrl.sink);
+    _pipe(bytes, sink);
+    return ctrl.stream;
+  }
+
+  Future<void> _pipe(Stream<List<int>> bytes, Sink<List<int>> sink) async {
+    await for (final chunk in bytes) {
+      sink.add(chunk); // Send chunk to compressor
+    }
+    sink.close();
+  }
+}
 /// A utility class to handle Zipping and Unzipping of file entries.
 class ZipPackage {
   /// Transforms a stream of [ZipFileEntry] objects into a stream of raw bytes
@@ -339,9 +364,9 @@ class ZipPackage {
   ///
   /// Returns a [Stream<ZipFileEntry>] containing the unzipped file entries.
   Stream<ZipFileEntry> unzip(RandomAccessFile file) async* {
-    final fullZipBytes = file;
+    // final fullZipBytes = file;
     // final ByteData byteData = fullZipBytes.buffer.asByteData();
-    final fileSize = file.lengthSync();
+    // final fileSize = file.lengthSync();
     // final byteData = file;
 
     /*
@@ -442,6 +467,7 @@ class ZipPackage {
       // );
       // final String fileName = utf8.decode(fileNameBytes);
       // file.setPositionSync(currentCentralDirectoryOffset + headerData.lengthInBytes);
+      file.setPositionSync(currentCentralDirectoryOffset + 46);
       final fileName = file.readString(fileNameLength);
       print("fileName=$fileName");
 
@@ -519,22 +545,24 @@ class ZipPackage {
       }
 
       print("2file.position=${file.positionSync()}, dataStartOffset=$dataStartOffset, len=${dataEndOffset-dataStartOffset}");
-      file.setPositionSync(dataStartOffset);
-      final rawCompressedData = file.readSync(dataEndOffset - dataStartOffset);
+      // file.setPositionSync(dataStartOffset);
+      // final rawCompressedData = file.readSync(dataEndOffset - dataStartOffset);
       // Extract the raw compressed data bytes
       // final List<int> rawCompressedData = fullZipBytes.sublist(dataStartOffset, dataEndOffset);
 
-      Stream<List<int>> fileDataStream;
-      if (compressionMethod == 8) {
-        // DEFLATED: Decompress using ZLibDecoder in raw mode
-        final ZLibDecoder decoder = ZLibDecoder(raw: true);
-        fileDataStream = Stream.fromIterable([decoder.convert(rawCompressedData)]);
-      } else if (compressionMethod == 0) {
-        // STORED: No decompression needed, use raw data directly
-        fileDataStream = Stream.fromIterable([rawCompressedData]);
-      } else {
-        throw UnsupportedError('Unsupported compression method: $compressionMethod for file $fileName');
-      }
+      // Stream<List<int>> fileDataStream;
+      // if (compressionMethod == 8) {
+      //   // DEFLATED: Decompress using ZLibDecoder in raw mode
+      //   final ZLibDecoder decoder = ZLibDecoder(raw: true);
+      //   fileDataStream = Stream.fromIterable([decoder.convert(rawCompressedData)]);
+      // } else if (compressionMethod == 0) {
+      //   // STORED: No decompression needed, use raw data directly
+      //   fileDataStream = Stream.fromIterable([rawCompressedData]);
+      // } else {
+      //   throw UnsupportedError('Unsupported compression method: $compressionMethod for file $fileName');
+      // }
+      final fileDataStream = file.readStream(dataStartOffset, dataEndOffset - dataStartOffset)
+          .transform(_ZipDecoder(compressionMethod == 8));
 
       // Reconstruct DateTime object from DOS date and time fields
       final int year = ((lastModifiedDate >> 9) & 0x7F) + 1980;
@@ -626,6 +654,22 @@ extension _RamAFExt on RandomAccessFile {
       return utf8.decode(data);
     }
     return '';
+  }
+
+  Stream<List<int>> readStream(int position, int length) async* {
+    const bufLength = 1 << 20;
+    final end = position + length;
+    var pos = position;
+    while (pos + bufLength < end) {
+      setPositionSync(pos);
+      yield await read(bufLength);
+      pos += bufLength;
+    }
+    final len = end - pos;
+    if (len > 0) {
+      setPositionSync(pos);
+      yield await read(len);
+    }
   }
 }
 
