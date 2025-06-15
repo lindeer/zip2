@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert'; // For utf8 encoding of file names
 import 'dart:io'; // For ZLibEncoder, ZLibDecoder
+import 'dart:math' as m;
 import 'dart:typed_data';
 
 /// Represents an entry within a Zip file.
@@ -337,15 +338,13 @@ class ZipPackage {
   /// [zipBytes] A stream of raw bytes representing the zipped file content.
   ///
   /// Returns a [Stream<ZipFileEntry>] containing the unzipped file entries.
-  Stream<ZipFileEntry> unzip(Stream<List<int>> zipBytes) async* {
-    final BytesBuilder allBytesBuilder = BytesBuilder();
-    // Read the entire ZIP file stream into a single byte list for easier parsing.
-    await for (final chunk in zipBytes) {
-      allBytesBuilder.add(chunk);
-    }
-    final Uint8List fullZipBytes = allBytesBuilder.takeBytes();
-    final ByteData byteData = fullZipBytes.buffer.asByteData();
+  Stream<ZipFileEntry> unzip(RandomAccessFile file) async* {
+    final fullZipBytes = file;
+    // final ByteData byteData = fullZipBytes.buffer.asByteData();
+    final fileSize = file.lengthSync();
+    // final byteData = file;
 
+    /*
     // Find the End of Central Directory Record (EOCD) to locate the Central Directory.
     // We search backward from the end of the file.
     int eocdOffset = -1;
@@ -353,9 +352,9 @@ class ZipPackage {
     // So, we search from the end of the file minus EOCD base size minus max comment length.
     // For practical purposes and assuming no very large comments, a shorter backward search might suffice,
     // but this range ensures robust EOCD discovery.
-    final int searchStart = fullZipBytes.length - _endOfCentralDirectoryBaseSize - 65535;
-    print("!!!!!!! start=$searchStart, full=${fullZipBytes.length}");
-    for (int i = fullZipBytes.length - _endOfCentralDirectoryBaseSize; i >= searchStart && i >= 0; i--) {
+    final int searchStart = fileSize - _endOfCentralDirectoryBaseSize - 65535;
+    print("!!!!!!! start=$searchStart, full=${fullZipBytes.lengthSync()}, pos=${await file.position()}");
+    for (int i = fileSize - _endOfCentralDirectoryBaseSize; i >= searchStart && i >= 0; i--) {
       try {
         final sig = byteData.getUint32(i, Endian.little);
         print("-------- i=$i, sig=$sig, hex=0x${sig.toRadixString(16)}");
@@ -369,7 +368,7 @@ class ZipPackage {
       }
     }
 
-    print("!!!!!!!! size=${fullZipBytes.length}, start=$searchStart, offset=$eocdOffset");
+    print("!!!!!!!! size=${fullZipBytes.lengthSync()}, start=$searchStart, offset=$eocdOffset");
     if (eocdOffset == -1) {
       throw FormatException('End of Central Directory Record not found.');
     }
@@ -379,60 +378,113 @@ class ZipPackage {
     final int centralDirectoryOffset = byteData.getUint32(eocdOffset + 16, Endian.little);
     final int numberOfEntries = byteData.getUint16(eocdOffset + 10, Endian.little);
     print("!!!!!!!! centralDirectorySize=$centralDirectorySize, centralDirectoryOffset=$centralDirectoryOffset, numberOfEntries=$numberOfEntries");
+    */
 
+    final (centralDirectorySize, centralDirectoryOffset, numberOfEntries) = _findCentralDirectory(file);
+    print("???? size=$centralDirectorySize, offset=$centralDirectoryOffset, num=$numberOfEntries");
     // Iterate through each entry in the Central Directory
     int currentCentralDirectoryOffset = centralDirectoryOffset;
+    file.setPositionSync(centralDirectoryOffset);
     for (int i = 0; i < numberOfEntries; i++) {
-      if (byteData.getUint32(currentCentralDirectoryOffset, Endian.little) != _centralDirectoryFileHeaderSignature) {
+      file.setPositionSync(currentCentralDirectoryOffset);
+      final headerData = file.readSync(46).buffer.asByteData();
+      final signature = headerData.getUint32(0, Endian.little);
+      if (signature != _centralDirectoryFileHeaderSignature) {
         throw FormatException('Invalid Central Directory File Header signature at offset $currentCentralDirectoryOffset');
       }
+      final compressionMethod = headerData.getUint16(10, Endian.little);
+      final lastModifiedTime = headerData.getUint16(12, Endian.little);
+      final lastModifiedDate = headerData.getUint16(14, Endian.little);
+      final crc32 = headerData.getUint32(16, Endian.little);
+      final compressedSize = headerData.getUint32(20, Endian.little);
+      final uncompressedSize = headerData.getUint32(24, Endian.little);
+      final fileNameLength = headerData.getUint16(28, Endian.little);
+      final extraFieldLength = headerData.getUint16(30, Endian.little);
+      final fileCommentLength = headerData.getUint16(32, Endian.little);
+      final localHeaderOffset = headerData.getUint32(42, Endian.little);
+      // if (file.readUint32() != _centralDirectoryFileHeaderSignature) {
+      // // if (byteData.getUint32(currentCentralDirectoryOffset, Endian.little) != _centralDirectoryFileHeaderSignature) {
+      //   throw FormatException('Invalid Central Directory File Header signature at offset $currentCentralDirectoryOffset');
+      // }
+      // file.readSync(6);
+      // final compressionMethod = file.readUint16();
+      // final lastModifiedTime = file.readUint16();
+      // final lastModifiedDate = file.readUint16();
+      // final crc32 = file.readUint32();
+      // final compressedSize = file.readUint32();
+      // final uncompressedSize = file.readUint32();
+      // final fileNameLength = file.readUint16();
+      // final extraFieldLength = file.readUint16();
+      // final fileCommentLength = file.readUint16();
+      // file.readSync(8);
+      // final localHeaderOffset = file.readUint32();
+
+
 
       // Read common fields from Central Directory File Header
-      final int compressionMethod = byteData.getUint16(currentCentralDirectoryOffset + 10, Endian.little);
-      final int lastModifiedTime = byteData.getUint16(currentCentralDirectoryOffset + 12, Endian.little);
-      final int lastModifiedDate = byteData.getUint16(currentCentralDirectoryOffset + 14, Endian.little);
-      final int crc32 = byteData.getUint32(currentCentralDirectoryOffset + 16, Endian.little);
-      final int compressedSize = byteData.getUint32(currentCentralDirectoryOffset + 20, Endian.little);
-      final int uncompressedSize = byteData.getUint32(currentCentralDirectoryOffset + 24, Endian.little);
-      final int fileNameLength = byteData.getUint16(currentCentralDirectoryOffset + 28, Endian.little);
-      final int extraFieldLength = byteData.getUint16(currentCentralDirectoryOffset + 30, Endian.little);
-      final int fileCommentLength = byteData.getUint16(currentCentralDirectoryOffset + 32, Endian.little);
-      final int localHeaderOffset = byteData.getUint32(currentCentralDirectoryOffset + 42, Endian.little);
+      // final int compressionMethod = byteData.getUint16(currentCentralDirectoryOffset + 10, Endian.little);
+      // final int lastModifiedTime = byteData.getUint16(currentCentralDirectoryOffset + 12, Endian.little);
+      // final int lastModifiedDate = byteData.getUint16(currentCentralDirectoryOffset + 14, Endian.little);
+      // final int crc32 = byteData.getUint32(currentCentralDirectoryOffset + 16, Endian.little);
+      // final int compressedSize = byteData.getUint32(currentCentralDirectoryOffset + 20, Endian.little);
+      // final int uncompressedSize = byteData.getUint32(currentCentralDirectoryOffset + 24, Endian.little);
+      // final int fileNameLength = byteData.getUint16(currentCentralDirectoryOffset + 28, Endian.little);
+      // final int extraFieldLength = byteData.getUint16(currentCentralDirectoryOffset + 30, Endian.little);
+      // final int fileCommentLength = byteData.getUint16(currentCentralDirectoryOffset + 32, Endian.little);
+      // final int localHeaderOffset = byteData.getUint32(currentCentralDirectoryOffset + 42, Endian.little);
+
 
       print("compressionMethod=$compressionMethod,lastModifiedTime=$lastModifiedTime,lastModifiedDate=$lastModifiedDate,crc32=$crc32,compressedSize=$compressedSize,uncompressedSize=$uncompressedSize,fileNameLength=$fileNameLength,extraFieldLength=$extraFieldLength,fileCommentLength=$fileCommentLength,localHeaderOffset=$localHeaderOffset");
       // Extract file name
-      final List<int> fileNameBytes = fullZipBytes.sublist(
-        currentCentralDirectoryOffset + _centralDirectoryFileHeaderBaseSize,
-        currentCentralDirectoryOffset + _centralDirectoryFileHeaderBaseSize + fileNameLength,
-      );
-      final String fileName = utf8.decode(fileNameBytes);
+      // final List<int> fileNameBytes = fullZipBytes.sublist(
+      //   currentCentralDirectoryOffset + _centralDirectoryFileHeaderBaseSize,
+      //   currentCentralDirectoryOffset + _centralDirectoryFileHeaderBaseSize + fileNameLength,
+      // );
+      // final String fileName = utf8.decode(fileNameBytes);
+      // file.setPositionSync(currentCentralDirectoryOffset + headerData.lengthInBytes);
+      final fileName = file.readString(fileNameLength);
       print("fileName=$fileName");
 
       // Validate Local File Header signature at its offset
       final int actualLocalHeaderOffset = localHeaderOffset;
-      if (byteData.getUint32(actualLocalHeaderOffset, Endian.little) != _localFileHeaderSignature) {
+      file.setPositionSync(actualLocalHeaderOffset);
+      final localHeaderData = file.readSync(30).buffer.asByteData();
+      if (localHeaderData.getUint32(0, Endian.little) != _localFileHeaderSignature) {
+      // if (byteData.getUint32(actualLocalHeaderOffset, Endian.little) != _localFileHeaderSignature) {
+      // if (file.readUint32() != _localFileHeaderSignature) {
         throw FormatException('Invalid Local File Header signature for file $fileName at offset $actualLocalHeaderOffset');
       }
 
       // Read lengths from Local File Header to calculate data start offset
-      final int localFileNameLength = byteData.getUint16(actualLocalHeaderOffset + 26, Endian.little);
-      final int localExtraFieldLength = byteData.getUint16(actualLocalHeaderOffset + 28, Endian.little);
-      final int dataStartOffset = actualLocalHeaderOffset + _localFileHeaderBaseSize + localFileNameLength + localExtraFieldLength;
+      // final int localFileNameLength = byteData.getUint16(actualLocalHeaderOffset + 26, Endian.little);
+      // final int localExtraFieldLength = byteData.getUint16(actualLocalHeaderOffset + 28, Endian.little);
+      final generalPurposeBitFlag = localHeaderData.getUint16(6, Endian.little);
+      final localFileNameLength = localHeaderData.getUint16(26, Endian.little);
+      final localExtraFieldLength = localHeaderData.getUint16(28, Endian.little);
+      // file.readSync(2);
+      // final generalPurposeBitFlag = file.readUint16();
+      // file.readSync(18);
+      // final localFileNameLength = file.readUint16();
+      // final localExtraFieldLength = file.readUint16();
+      final dataStartOffset = actualLocalHeaderOffset + _localFileHeaderBaseSize + localFileNameLength + localExtraFieldLength;
 
       print("localFileNameLength=$localFileNameLength, localExtraFieldLength=$localExtraFieldLength, dataStartOffset=$dataStartOffset");
       // Determine if a Data Descriptor is present (bit 3 of general purpose bit flag)
-      final int generalPurposeBitFlag = byteData.getUint16(actualLocalHeaderOffset + 6, Endian.little);
+      // final int generalPurposeBitFlag = byteData.getUint16(actualLocalHeaderOffset + 6, Endian.little);
+      // file.setPositionSync(actualLocalHeaderOffset);
+
       final bool hasDataDescriptor = (generalPurposeBitFlag & 0x0008) != 0;
+      print("generalPurposeBitFlag=$generalPurposeBitFlag, has=$hasDataDescriptor");
 
       // Use sizes and CRC from Central Directory unless Data Descriptor overrides
       int effectiveCompressedSize = compressedSize;
       int effectiveUncompressedSize = uncompressedSize;
       int effectiveCrc32 = crc32;
+      print("effectiveCrc32=$effectiveCrc32, effectiveCompressedSize=$effectiveCompressedSize, effectiveUncompressedSize=$effectiveUncompressedSize");
 
       // Calculate the end offset of the compressed data.
       // This will be adjusted if a Data Descriptor is present.
       int dataEndOffset = dataStartOffset + effectiveCompressedSize;
-
       // If Data Descriptor is present, read its values which supersede
       // the values in the Local File Header (and Central Directory)
       if (hasDataDescriptor) {
@@ -441,20 +493,36 @@ class ZipPackage {
         // Check for Data Descriptor signature. It's optional per spec,
         // so we try to read it but also handle its absence.
         int ddStartReadOffset = dataDescriptorOffset;
-        if (byteData.getUint32(dataDescriptorOffset, Endian.little) == _dataDescriptorSignature) {
-          ddStartReadOffset += 4; // Skip signature if it's present
+        // if (byteData.getUint32(dataDescriptorOffset, Endian.little) == _dataDescriptorSignature) {
+        file.setPositionSync(dataDescriptorOffset);
+        final descriptorData = file.readSync(16).buffer.asByteData();
+        if (descriptorData.getUint32(0, Endian.little) != _dataDescriptorSignature) {
+          throw FormatException('Invalid Descriptor Header signature for file $fileName at offset $dataDescriptorOffset');
         }
+        // if (file.readUint32() == _dataDescriptorSignature) {
+        //   ddStartReadOffset += 4; // Skip signature if it's present
+        // }
 
-        effectiveCrc32 = byteData.getUint32(ddStartReadOffset, Endian.little);
-        effectiveCompressedSize = byteData.getUint32(ddStartReadOffset + 4, Endian.little);
-        effectiveUncompressedSize = byteData.getUint32(ddStartReadOffset + 8, Endian.little);
+        // effectiveCrc32 = byteData.getUint32(ddStartReadOffset, Endian.little);
+        // effectiveCompressedSize = byteData.getUint32(ddStartReadOffset + 4, Endian.little);
+        // effectiveUncompressedSize = byteData.getUint32(ddStartReadOffset + 8, Endian.little);
+        // effectiveCrc32 = file.readUint32();
+        // effectiveCompressedSize = file.readUint32();
+        // effectiveUncompressedSize = file.readUint32();
+        effectiveCrc32 = descriptorData.getUint32(4, Endian.little);
+        effectiveCompressedSize = descriptorData.getUint32(8, Endian.little);
+        effectiveUncompressedSize = descriptorData.getUint32(12, Endian.little);
+        print("effectiveCrc32=$effectiveCrc32, effectiveCompressedSize=$effectiveCompressedSize, effectiveUncompressedSize=$effectiveUncompressedSize");
 
         // Re-calculate data end offset with the actual compressed size from DD
         dataEndOffset = dataStartOffset + effectiveCompressedSize;
       }
 
+      print("2file.position=${file.positionSync()}, dataStartOffset=$dataStartOffset, len=${dataEndOffset-dataStartOffset}");
+      file.setPositionSync(dataStartOffset);
+      final rawCompressedData = file.readSync(dataEndOffset - dataStartOffset);
       // Extract the raw compressed data bytes
-      final List<int> rawCompressedData = fullZipBytes.sublist(dataStartOffset, dataEndOffset);
+      // final List<int> rawCompressedData = fullZipBytes.sublist(dataStartOffset, dataEndOffset);
 
       Stream<List<int>> fileDataStream;
       if (compressionMethod == 8) {
@@ -497,6 +565,68 @@ class ZipPackage {
       currentCentralDirectoryOffset += _centralDirectoryFileHeaderBaseSize + fileNameLength + extraFieldLength + fileCommentLength;
     }
   }
+
+  (int, int, int) _findCentralDirectory(RandomAccessFile file) {
+    final fileSize = file.lengthSync();
+    final searchStart = m.max(0, fileSize - _endOfCentralDirectoryBaseSize - 65535);
+    file.setPositionSync(searchStart);
+    final buf = file.readSync(fileSize - searchStart);
+    final byteData = buf.buffer.asByteData();
+
+    for (var i = buf.length - 4; i >= 0; i--) {
+      final signature = byteData.getUint32(i, Endian.little);
+      if (signature == _endOfCentralDirectorySignature) {
+        final centralDirectorySize = byteData.getUint32(i + 12, Endian.little);
+        final centralDirectoryOffset = byteData.getUint32(i + 16, Endian.little);
+        final numberOfEntries = byteData.getUint16(i + 10, Endian.little);
+        return (centralDirectorySize, centralDirectoryOffset, numberOfEntries);
+      }
+    }
+    throw Exception('Invalid ZIP file: End of central directory not found');
+  }
+
+}
+
+extension _RamAFExt on RandomAccessFile {
+
+  int getUint32(int pos, Endian endian) {
+    setPositionSync(pos);
+    final data = Uint8List(4);
+    readIntoSync(data);
+    return data.buffer.asByteData().getUint32(0, endian = endian);
+  }
+
+  int getUint16(int pos, Endian endian) {
+    setPositionSync(pos);
+    final data = Uint8List(2);
+    readIntoSync(data);
+    return data.buffer.asByteData().getUint16(0, endian = endian);
+  }
+
+  List<int> sublist(int start, int end) {
+    setPositionSync(start);
+    final data = Uint8List(end - start);
+    readIntoSync(data);
+    return data;
+  }
+
+  int readUint32() {
+    final data = readSync(4);
+    return data.buffer.asByteData().getUint32(0, Endian.little);
+  }
+
+  int readUint16() {
+    final data = readSync(2);
+    return data.buffer.asByteData().getUint16(0, Endian.little);
+  }
+
+  String readString(int length) {
+    if (length > 0) {
+      final data = readSync(length);
+      return utf8.decode(data);
+    }
+    return '';
+  }
 }
 
 /// Internal class to hold information for Central Directory Record creation.
@@ -527,12 +657,13 @@ class _CentralDirectoryRecord {
 
 void main(List<String> argv) async {
   dryTest();
+  // unzipFiles(argv);
 }
 
 void unzipFiles(List<String> files) async {
   final zip = ZipPackage();
   for (final f in files) {
-    final Stream<List<int>> stream = File(f).openRead();
+    final stream = await File(f).open(mode: FileMode.read);
     final entries = zip.unzip(stream);
     await for (final entry in entries) {
       print('Unzipping entry: ${entry.name}');
@@ -592,7 +723,7 @@ void dryTest() async {
   print('\nAttempting to unzip example.zip...');
   final File inputZipFile = File('example.zip');
   if (await inputZipFile.exists()) {
-    final Stream<List<int>> zipFileBytesStream = inputZipFile.openRead();
+    final zipFileBytesStream = await inputZipFile.open(mode: FileMode.read);
     final Stream<ZipFileEntry> unzippedEntriesStream = zipPackage.unzip(zipFileBytesStream);
 
     await for (final entry in unzippedEntriesStream) {
