@@ -1,7 +1,7 @@
 import 'dart:async' show Completer, StreamController, StreamTransformerBase;
 import 'dart:convert' show utf8;
 import 'dart:io' show ZLibEncoder;
-import 'dart:typed_data' show ByteData, BytesBuilder, Endian;
+import 'dart:typed_data' show ByteData, BytesBuilder, Endian, Uint8List;
 
 import 'zip_file_entry.dart';
 
@@ -100,6 +100,17 @@ class _CentralDirectoryRecord {
 }
 
 const zip = ZipLib();
+
+class _BytesWrapper {
+  final ByteData _data;
+  int _position;
+
+  _BytesWrapper._(this._data) : _position = 0;
+
+  int get position => _position;
+
+  int get length => _data.lengthInBytes;
+}
 
 final class ZipLib {
   const ZipLib();

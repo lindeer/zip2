@@ -83,15 +83,15 @@ final class ZipEncoder extends StreamTransformerBase<ZipFileEntry, List<int>> {
       final generalPurposeBitFlag = 0x0008;
 
       // --- Construct Local File Header ---
-      final localHeader = ByteData(_localFileHeaderBaseSize);
+      final localHeader = _BytesWriter(ByteData(_localFileHeaderBaseSize));
 
-      localHeader.setUint32(0, _localFileHeaderSignature, Endian.little);
+      localHeader.uint32(_localFileHeaderSignature);
       // Version needed to extract (2.0)
-      localHeader.setUint16(4, 20, Endian.little);
+      localHeader.uint16(20);
       // General purpose bit flag
-      localHeader.setUint16(6, generalPurposeBitFlag, Endian.little);
+      localHeader.uint16(generalPurposeBitFlag);
       // Compression method
-      localHeader.setUint16(8, entry.method.method, Endian.little);
+      localHeader.uint16(entry.method.method);
 
       // Convert DateTime to DOS format (FAT timestamp)
       final modified = entry.lastModified ?? DateTime.now();
@@ -101,21 +101,21 @@ final class ZipEncoder extends StreamTransformerBase<ZipFileEntry, List<int>> {
       final dosDate = (modified.day) +
           (modified.month << 5) +
           ((modified.year - 1980) << 9);
-      localHeader.setUint16(10, dosTime, Endian.little);
-      localHeader.setUint16(12, dosDate, Endian.little);
+      localHeader.uint16(dosTime);
+      localHeader.uint16(dosDate);
 
       // Placeholder values (0) for CRC-32, compressed size, uncompressed size,
       // as they will be in the Data Descriptor
-      localHeader.setUint32(14, 0, Endian.little);
-      localHeader.setUint32(18, 0, Endian.little);
-      localHeader.setUint32(22, 0, Endian.little);
+      localHeader.uint32(0);
+      localHeader.uint32(0);
+      localHeader.uint32(0);
       // File name length
-      localHeader.setUint16(26, fileNameLength, Endian.little);
+      localHeader.uint16(fileNameLength);
       // Extra field length (not used in this simplified version)
-      localHeader.setUint16(28, 0, Endian.little);
+      localHeader.uint16(0);
 
       final localHeaderBuilder = BytesBuilder()
-        ..add(localHeader.buffer.asUint8List())
+        ..add(localHeader.asUint8List())
         ..add(fileNameBytes);
 
       final localHeaderSize = localHeaderBuilder.length;
@@ -139,16 +139,17 @@ final class ZipEncoder extends StreamTransformerBase<ZipFileEntry, List<int>> {
 
       // --- Construct Data Descriptor ---
       // This immediately follows the compressed data for files with bit 3 set
-      final dataDescriptor = ByteData(_dataDescriptorWithSignatureSize);
+      final dataDescriptor =
+          _BytesWriter(ByteData(_dataDescriptorWithSignatureSize));
       // Data Descriptor signature
-      dataDescriptor.setUint32(0, _dataDescriptorSignature, Endian.little);
-      dataDescriptor.setUint32(4, crc, Endian.little); // CRC-32
+      dataDescriptor.uint32(_dataDescriptorSignature);
+      dataDescriptor.uint32(crc); // CRC-32
       // Compressed size
-      dataDescriptor.setUint32(8, compressedSize, Endian.little);
+      dataDescriptor.uint32(compressedSize);
       // Uncompressed size
-      dataDescriptor.setUint32(12, uncompressedSize, Endian.little);
+      dataDescriptor.uint32(uncompressedSize);
       // Output the Data Descriptor bytes
-      yield dataDescriptor.buffer.asUint8List();
+      yield dataDescriptor.asUint8List();
 
       currentOffset += _dataDescriptorWithSignatureSize;
 
@@ -183,29 +184,30 @@ final class ZipEncoder extends StreamTransformerBase<ZipFileEntry, List<int>> {
       final fileNameBytes = utf8.encode(record.fileName);
       final nameLength = fileNameBytes.length;
 
-      final centralHeader = ByteData(_centralDirectoryFileHeaderBaseSize);
-      centralHeader.setUint32(0, _centralDirectoryFileHeaderSignature, Endian.little);
-      centralHeader.setUint16(4, 20, Endian.little); // Version made by (2.0)
+      final centralHeader =
+          _BytesWriter(ByteData(_centralDirectoryFileHeaderBaseSize));
+      centralHeader.uint32(_centralDirectoryFileHeaderSignature);
+      centralHeader.uint16(20); // Version made by (2.0)
       // Version needed to extract (2.0)
-      centralHeader.setUint16(6, 20, Endian.little);
+      centralHeader.uint16(20);
       // General purpose bit flag (bit 3 set)
-      centralHeader.setUint16(8, 0x0008, Endian.little);
-      centralHeader.setUint16(10, record.compressionMethod, Endian.little);
-      centralHeader.setUint16(12, record.lastModifiedTime, Endian.little);
-      centralHeader.setUint16(14, record.lastModifiedDate, Endian.little);
-      centralHeader.setUint32(16, record.crc32, Endian.little);
-      centralHeader.setUint32(20, record.compressedSize, Endian.little);
-      centralHeader.setUint32(24, record.uncompressedSize, Endian.little);
-      centralHeader.setUint16(28, nameLength, Endian.little);
-      centralHeader.setUint16(30, 0, Endian.little); // Extra field length
-      centralHeader.setUint16(32, 0, Endian.little); // File comment length
-      centralHeader.setUint16(34, 0, Endian.little); // Disk number start
-      centralHeader.setUint16(36, 0, Endian.little); // Internal file attributes
-      centralHeader.setUint32(38, 0, Endian.little); // External file attributes
+      centralHeader.uint16(0x0008);
+      centralHeader.uint16(record.compressionMethod);
+      centralHeader.uint16(record.lastModifiedTime);
+      centralHeader.uint16(record.lastModifiedDate);
+      centralHeader.uint32(record.crc32);
+      centralHeader.uint32(record.compressedSize);
+      centralHeader.uint32(record.uncompressedSize);
+      centralHeader.uint16(nameLength);
+      centralHeader.uint16(0); // Extra field length
+      centralHeader.uint16(0); // File comment length
+      centralHeader.uint16(0); // Disk number start
+      centralHeader.uint16(0); // Internal file attributes
+      centralHeader.uint32(0); // External file attributes
       // Relative offset of local header
-      centralHeader.setUint32(42, record.localHeaderOffset, Endian.little);
+      centralHeader.uint32(record.localHeaderOffset);
 
-      centralDirectoryBuilder.add(centralHeader.buffer.asUint8List());
+      centralDirectoryBuilder.add(centralHeader.asUint8List());
       centralDirectoryBuilder.add(fileNameBytes);
       centralDirectorySize += _centralDirectoryFileHeaderBaseSize + nameLength;
     }
@@ -216,23 +218,39 @@ final class ZipEncoder extends StreamTransformerBase<ZipFileEntry, List<int>> {
     currentOffset += centralDirectorySize;
 
     // --- Construct End of Central Directory Record (EOCD) ---
-    final eocd = ByteData(_endOfCentralDirectoryBaseSize);
-    eocd.setUint32(0, _endOfCentralDirectorySignature, Endian.little);
+    final eocd = _BytesWriter(ByteData(_endOfCentralDirectoryBaseSize));
+    eocd.uint32(_endOfCentralDirectorySignature);
     // Number of this disk
-    eocd.setUint16(4, 0, Endian.little);
+    eocd.uint16(0);
     // Disk where central directory starts
-    eocd.setUint16(6, 0, Endian.little);
+    eocd.uint16(0);
     // Number of central directory records on this disk
-    eocd.setUint16(8, centralDirectoryRecords.length, Endian.little);
+    eocd.uint16(centralDirectoryRecords.length);
     // Total number of central directory records
-    eocd.setUint16(10, centralDirectoryRecords.length, Endian.little);
+    eocd.uint16(centralDirectoryRecords.length);
     // Size of central directory
-    eocd.setUint32(12, centralDirectorySize, Endian.little);
+    eocd.uint32(centralDirectorySize);
     // Offset of start of central directory
-    eocd.setUint32(16, centralDirectoryOffset, Endian.little);
+    eocd.uint32(centralDirectoryOffset);
     // ZIP file comment length (not used)
-    eocd.setUint16(20, 0, Endian.little);
+    eocd.uint16(0);
 
-    yield eocd.buffer.asUint8List(); // Output the EOCD bytes
+    yield eocd.asUint8List(); // Output the EOCD bytes
   }
+}
+
+final class _BytesWriter extends _BytesWrapper {
+  _BytesWriter(super.data) : super._();
+
+  void uint16(int v) {
+    _data.setUint16(_position, v, Endian.little);
+    _position += 2;
+  }
+
+  void uint32(int v) {
+    _data.setUint32(_position, v, Endian.little);
+    _position += 4;
+  }
+
+  Uint8List asUint8List() => _data.buffer.asUint8List();
 }
