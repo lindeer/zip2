@@ -1,10 +1,12 @@
 import 'dart:async' show Completer, StreamController, StreamTransformerBase;
 import 'dart:convert' show utf8;
-import 'dart:io' show ZLibEncoder;
+import 'dart:io' show RandomAccessFile, ZLibDecoder, ZLibEncoder;
+import 'dart:math' as m;
 import 'dart:typed_data' show ByteData, BytesBuilder, Endian, Uint8List;
 
 import 'zip_file_entry.dart';
 
+part 'zip_decoder.dart';
 part 'zip_encoder.dart';
 
 /// Calculates the CRC-32 checksum of a list of bytes.
@@ -116,4 +118,6 @@ final class ZipLib {
   const ZipLib();
 
   ZipEncoder get encoder => const ZipEncoder();
+
+  ZipDecoder get decoder => const ZipDecoder();
 }
