@@ -48,6 +48,12 @@ final class ZipDecoder {
       file.setPositionSync(currentCentralDirectoryOffset);
       final headerBytes = file.readSync(_centralDirectoryFileHeaderBaseSize);
       final headerData = _BytesReader(headerBytes);
+      final sig = headerData.uint32();
+      if (sig != _centralDirectoryFileHeaderSignature) {
+        throw FormatException('Invalid Central Directory File Header signature '
+            'at offset $currentCentralDirectoryOffset');
+      }
+      headerData.skip(6);
       final compressionMethod = headerData.uint16();
       final lastModifiedTime = headerData.uint16();
       final lastModifiedDate = headerData.uint16();
@@ -57,6 +63,7 @@ final class ZipDecoder {
       final fileNameLength = headerData.uint16();
       final extraFieldLength = headerData.uint16();
       final fileCommentLength = headerData.uint16();
+      headerData.skip(8);
       final localHeaderOffset = headerData.uint32();
 
       file.setPositionSync(currentCentralDirectoryOffset + headerData.length);
@@ -72,9 +79,9 @@ final class ZipDecoder {
         throw FormatException('Invalid Local File Header signature for file'
             ' $fileName at offset $actualLocalHeaderOffset');
       }
-      localHeaderData.uint16(); // skip 2 bytes
+      localHeaderData.skip(2); // skip 2 bytes
       final generalPurposeBitFlag = localHeaderData.uint16();
-      localHeaderData.bytes(18);
+      localHeaderData.skip(18);
       final localFileNameLength = localHeaderData.uint16();
       final localExtraFieldLength = localHeaderData.uint16();
 
@@ -171,10 +178,10 @@ final class ZipDecoder {
       final signature = byteData.getUint32(i, Endian.little);
       if (signature == _endOfCentralDirectorySignature) {
         final reader = _BytesReader._(byteData.buffer.asByteData(i));
-        final _ = reader.uint32();
+        reader.skip(10);
+        final count = reader.uint16();
         final size = reader.uint32();
         final offset = reader.uint32();
-        final count = reader.uint16();
         return (size, offset, count);
       }
     }
@@ -227,5 +234,9 @@ final class _BytesReader extends _BytesWrapper {
     final v = _data.buffer.asUint8List(_position, length);
     _position += length;
     return v;
+  }
+
+  void skip(int size) {
+    _position += size;
   }
 }
