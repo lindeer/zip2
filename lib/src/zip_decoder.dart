@@ -16,15 +16,16 @@ extension RamFileExt on RandomAccessFile {
     const bufLength = 1 << 20;
     final end = position + length;
     var pos = position;
+    var f = this;
     while (pos + bufLength < end) {
-      setPositionSync(pos);
-      yield await read(bufLength);
+      f = await f.setPosition(pos);
+      yield await f.read(bufLength);
       pos += bufLength;
     }
     final len = end - pos;
     if (len > 0) {
-      setPositionSync(pos);
-      yield await read(len);
+      f = await f.setPosition(pos);
+      yield await f.read(len);
     }
   }
 }
