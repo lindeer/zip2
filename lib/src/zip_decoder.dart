@@ -128,9 +128,11 @@ final class ZipDecoder {
 
       final fileDataLen = dataEndOffset - dataStartOffset;
       final compressed = compressionMethod == ZipMethod.deflated.method;
-      final fileDataStream = file
-          ._readStream(dataStartOffset, fileDataLen)
-          .transform(_Decompressor(compressed));
+      final rawStream = file._readStream(dataStartOffset, fileDataLen);
+      final fileDataStream = compressed
+          ? rawStream.transform(_Decompressor(compressed))
+          : rawStream;
+
 
       // Reconstruct DateTime object from DOS date and time fields
       final year = ((lastModifiedDate >> 9) & 0x7F) + 1980;

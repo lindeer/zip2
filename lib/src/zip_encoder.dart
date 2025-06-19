@@ -122,8 +122,9 @@ final class ZipEncoder extends StreamTransformerBase<ZipFileEntry, List<int>> {
       // Output the Local File Header bytes
       yield localHeaderBuilder.takeBytes();
 
+      final compress = entry.method == ZipMethod.deflated;
       final encoder = _Compressor();
-      final dataStream = entry.data.transform(encoder);
+      final dataStream = compress ? entry.data.transform(encoder) : entry.data;
 
       int compressedSize = 0;
       await for (final chunk in dataStream) {
@@ -134,8 +135,9 @@ final class ZipEncoder extends StreamTransformerBase<ZipFileEntry, List<int>> {
       // Update the current offset in the ZIP file
       currentOffset += localHeaderSize + compressedSize;
 
-      final uncompressedSize = await encoder.uncompressedSize;
-      final crc = await encoder.crc;
+      final uncompressedSize =
+          compress ? await encoder.uncompressedSize : compressedSize;
+      final crc = compress ? await encoder.crc : 0;
 
       // --- Construct Data Descriptor ---
       // This immediately follows the compressed data for files with bit 3 set
