@@ -26,4 +26,9 @@ void main() async {
   await entries
       .transform(zip2.encoder)
       .pipe(File('example.zip').openWrite());
+
+  final file = await File('example.zip').open(mode: FileMode.read);
+  await for (final entry in file.unzip()) {
+    await entry.data.pipe(File(entry.name).openWrite());
+  }
 }

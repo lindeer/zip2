@@ -3,6 +3,7 @@ import 'dart:convert' show utf8;
 import 'dart:io' show RandomAccessFile, ZLibDecoder, ZLibEncoder;
 import 'dart:math' as m;
 import 'dart:typed_data' show ByteData, BytesBuilder, Endian, Uint8List;
+import 'package:meta/meta.dart' show visibleForTesting;
 
 import 'zip_file_entry.dart';
 
@@ -17,37 +18,33 @@ part 'zip_encoder.dart';
 /// Returns the CRC-32 checksum as an unsigned 32-bit integer.
 class _Crc32 {
   static const _polynomial = 0xEDB88320;
-  static final _crcTable = _generateCrcTable();
 
   /// Generates the lookup table for CRC-32 calculation.
-  static List<int> _generateCrcTable() {
-    final table = List<int>.filled(256, 0);
-    for (var i = 0; i < 256; i++) {
-      var entry = i;
-      for (var j = 0; j < 8; j++) {
-        if ((entry & 1) == 1) {
-          entry = (entry >> 1) ^ _polynomial;
-        } else {
-          entry >>= 1;
-        }
-      }
-      table[i] = entry;
+  static final _crcTable = List<int>.generate(256, (i) {
+    int crc = i;
+    for (var j = 0; j < 8; j++) {
+      crc = (crc & 1) == 1 ? (crc >> 1) ^ _polynomial : crc >> 1;
     }
-    return table;
-  }
+    return crc;
+  });
+
+  int _crc = 0xFFFFFFFF;
+
+  int get value => _crc ^ 0xFFFFFFFF;
+
+  @override
+  String toString() => '0x${_crc.toRadixString(16).padLeft(8, '0')}';
 
   /// Updates the CRC-32 checksum with the given data.
   ///
-  /// [crc] The current CRC-32 checksum. For a new calculation, start with `0xFFFFFFFF`.
   /// [bytes] The list of bytes to add to the checksum.
   ///
-  /// Returns the updated CRC-32 checksum.
-  static int update(int crc, List<int> bytes) {
-    var c = crc ^ 0xFFFFFFFF;
-    for (var i = 0; i < bytes.length; i++) {
-      c = (c >> 8) ^ _crcTable[(c ^ bytes[i]) & 0xFF];
+  void update(List<int> bytes) {
+    var c = _crc;
+    for (var byte in bytes) {
+      c = _crcTable[(c ^ byte) & 0xFF] ^ (c >> 8);
     }
-    return c ^ 0xFFFFFFFF;
+    _crc = c;
   }
 
   /// Calculates the CRC-32 checksum for a full list of bytes.
@@ -55,8 +52,14 @@ class _Crc32 {
   /// [bytes] The list of bytes to calculate the checksum for.
   ///
   /// Returns the CRC-32 checksum as an unsigned 32-bit integer.
-  static int calculate(List<int> bytes) => update(0xFFFFFFFF, bytes);
+  static int calculate(List<int> bytes) {
+    final crc = _Crc32()..update(bytes);
+    return crc.value;
+  }
 }
+
+@visibleForTesting
+int crc32(List<int> bytes) => _Crc32.calculate(bytes);
 
 // Constants for ZIP file format signatures and offsets
 const _localFileHeaderSignature = 0x04034b50;

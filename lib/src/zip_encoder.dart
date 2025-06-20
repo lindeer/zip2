@@ -38,13 +38,13 @@ final class _Compressor extends StreamTransformerBase<List<int>, List<int>> {
 
   Future<void> _pipe(Stream<List<int>> bytes, Sink<List<int>> sink) async {
     int uncompressedSize = 0;
-    int crc = 0xFFFFFFFF; // Initialize CRC-32 calculation
+    final c = _Crc32();
     await for (final chunk in bytes) {
       uncompressedSize += chunk.length;
-      crc = _Crc32.update(crc, chunk);
+      c.update(chunk);
       sink.add(chunk); // Send chunk to compressor
     }
-    crc ^= 0xFFFFFFFF; // Finalize CRC-32 value
+    final crc = c.value;
     sink.close(); // Signal end of input to compressor
     _uncompressSize = uncompressedSize;
     _crc = crc;
