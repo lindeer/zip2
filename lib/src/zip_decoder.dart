@@ -2,7 +2,7 @@ part of 'zlib.dart';
 
 /// A utility extension method to unzip a zip file as [RandomAccessFile].
 extension RamFileExt on RandomAccessFile {
-  Stream<ZipFileEntry> unzip() => const ZipDecoder().unzip(this);
+  Iterable<ZipFileEntry> unzip() => const ZipDecoder().unzip(this);
 
   String _readString(int length) {
     if (length > 0) {
@@ -40,7 +40,7 @@ final class ZipDecoder {
   /// [file] A random access file representing the zipped file content.
   ///
   /// Returns a [Stream<ZipFileEntry>] containing the unzipped file entries.
-  Stream<ZipFileEntry> unzip(RandomAccessFile file) async* {
+  Iterable<ZipFileEntry> unzip(RandomAccessFile file) sync* {
     final r = _findCentralDirectory(file);
     final (centralDirectorySize, centralDirectoryOffset, numberOfEntries) = r;
     // Iterate through each entry in the Central Directory
