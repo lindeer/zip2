@@ -64,4 +64,7 @@ class ZipFileEntry {
     this.uncompressedSize,
     this.compressedSize,
   });
+
+  @override
+  String toString() => "ZipFileEntry('$name')";
 }
