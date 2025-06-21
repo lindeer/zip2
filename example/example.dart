@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'package:zip2/zip2.dart';
 
 void main() async {
-  final entries = Stream.fromIterable([
+  final entries = [
     ZipFileEntry(
       name: 'hello.txt',
       data: Stream.fromIterable([
@@ -22,9 +22,8 @@ void main() async {
       lastModified: DateTime.now(),
       method: ZipMethod.stored, // STORED (no compression)
     ),
-  ]);
-  await entries
-      .transform(zip2.encoder)
+  ];
+  await entries.zip()
       .pipe(File('example.zip').openWrite());
 
   final file = await File('example.zip').open(mode: FileMode.read);

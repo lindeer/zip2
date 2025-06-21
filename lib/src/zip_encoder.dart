@@ -53,13 +53,19 @@ final class _Compressor extends StreamTransformerBase<List<int>, List<int>> {
   }
 }
 
+/// An extension that could directly handle file entries by
+/// [Iterable<ZipFileEntry>]
+extension ZipEntryItorExt on Iterable<ZipFileEntry> {
+  Stream<List<int>> zip() => ZipEncoder().zip(this);
+}
+
 /// A utility class to handle Zipping of file entries.
 ///
-/// This transformer reads each entry's data, calculates its CRC-32 checksum and
+/// This class reads each entry's data, calculates its CRC-32 checksum and
 /// sizes, compresses the data (if specified), and then constructs the
 /// necessary ZIP headers (Local File Header, Data Descriptor, Central
 /// Directory, and End of Central Directory Record) to form a valid ZIP archive.
-final class ZipEncoder extends StreamTransformerBase<ZipFileEntry, List<int>> {
+final class ZipEncoder {
   const ZipEncoder();
 
   /// Transforms a stream of [ZipFileEntry] objects into a stream of raw bytes
@@ -67,15 +73,14 @@ final class ZipEncoder extends StreamTransformerBase<ZipFileEntry, List<int>> {
   /// [entries] A stream of [ZipFileEntry] objects to be zipped.
   ///
   /// Returns a [Stream<List<int>>] representing the zipped file content.
-  @override
-  Stream<List<int>> bind(Stream<ZipFileEntry> entries) async* {
+  Stream<List<int>> zip(Iterable<ZipFileEntry> entries) async* {
     // Stores information for each file to construct the Central Directory
     final centralDirectoryRecords = <_CentralDirectoryRecord>[];
     // Tracks the current offset within the output ZIP file bytes
     int currentOffset = 0;
 
     // Process each ZipFileEntry from the input stream
-    await for (final entry in entries) {
+    for (final entry in entries) {
       final fileName = entry.name;
       final fileNameBytes = utf8.encode(fileName);
       final fileNameLength = fileNameBytes.length;
