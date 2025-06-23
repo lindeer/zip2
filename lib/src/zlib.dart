@@ -104,6 +104,7 @@ class _CentralDirectoryRecord {
   });
 }
 
+/// A const variable for convenience, just like utf8 in 'dart:convert'.
 const zip = ZipLib();
 
 class _BytesWrapper {
@@ -117,6 +118,7 @@ class _BytesWrapper {
   int get length => _data.lengthInBytes;
 }
 
+/// A holder class for [ZipEncoder] and [ZipDecoder].
 final class ZipLib {
   const ZipLib();
 

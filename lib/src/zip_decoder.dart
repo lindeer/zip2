@@ -2,7 +2,7 @@ part of 'zlib.dart';
 
 /// A utility extension method to unzip a zip file as [RandomAccessFile].
 extension RamFileExt on RandomAccessFile {
-  Iterable<ZipFileEntry> unzip() => const ZipDecoder().unzip(this);
+  ZipArchive unzip() => const ZipDecoder().unzip(this);
 
   String _readString(int length) {
     if (length > 0) {
@@ -40,7 +40,9 @@ final class ZipDecoder {
   /// [file] A random access file representing the zipped file content.
   ///
   /// Returns a [Stream<ZipFileEntry>] containing the unzipped file entries.
-  Iterable<ZipFileEntry> unzip(RandomAccessFile file) sync* {
+  ZipArchive unzip(RandomAccessFile file) => ZipArchive(_unzipFrom(file));
+
+  Iterable<ZipFileEntry> _unzipFrom(RandomAccessFile file) sync* {
     final r = _findCentralDirectory(file);
     final (centralDirectorySize, centralDirectoryOffset, numberOfEntries) = r;
     // Iterate through each entry in the Central Directory
@@ -132,7 +134,6 @@ final class ZipDecoder {
       final fileDataStream = compressed
           ? rawStream.transform(_Decompressor(compressed))
           : rawStream;
-
 
       // Reconstruct DateTime object from DOS date and time fields
       final year = ((lastModifiedDate >> 9) & 0x7F) + 1980;

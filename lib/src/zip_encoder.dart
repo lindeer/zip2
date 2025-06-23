@@ -54,8 +54,8 @@ final class _Compressor extends StreamTransformerBase<List<int>, List<int>> {
 }
 
 /// An extension that could directly handle file entries by
-/// [Iterable<ZipFileEntry>]
-extension ZipEntryItorExt on Iterable<ZipFileEntry> {
+/// [ZipArchive]
+extension ZipEntryItorExt on ZipArchive {
   Stream<List<int>> zip() => ZipEncoder().zip(this);
 }
 
@@ -73,7 +73,8 @@ final class ZipEncoder {
   /// [entries] A stream of [ZipFileEntry] objects to be zipped.
   ///
   /// Returns a [Stream<List<int>>] representing the zipped file content.
-  Stream<List<int>> zip(Iterable<ZipFileEntry> entries) async* {
+  Stream<List<int>> zip(ZipArchive archive) async* {
+    final entries = archive.entries;
     // Stores information for each file to construct the Central Directory
     final centralDirectoryRecords = <_CentralDirectoryRecord>[];
     // Tracks the current offset within the output ZIP file bytes

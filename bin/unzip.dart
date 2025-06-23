@@ -15,7 +15,7 @@ Future<void> _unzip(ZipFileEntry entry) async {
 
 void main(List<String> argv) async {
   for (final f in argv) {
-    final entries = File(f).openSync(mode: FileMode.read).unzip();
+    final entries = File(f).openSync(mode: FileMode.read).unzip().entries;
     for (final entry in entries) {
       await _unzip(entry);
     }

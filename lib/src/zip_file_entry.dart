@@ -68,3 +68,17 @@ class ZipFileEntry {
   @override
   String toString() => "ZipFileEntry('$name')";
 }
+
+/// A holder class for zip file entries.
+final class ZipArchive {
+  final Map<String, ZipFileEntry> _entries;
+
+  ZipArchive._(this._entries);
+
+  ZipArchive(Iterable<ZipFileEntry> entries)
+      : this._({for (final e in entries) e.name: e});
+
+  Iterable<ZipFileEntry> get entries => _entries.values;
+
+  ZipFileEntry? operator [](String name) => _entries[name];
+}

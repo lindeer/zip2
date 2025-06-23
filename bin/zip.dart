@@ -1,6 +1,6 @@
 import 'dart:io' show Directory, File, FileSystemEntity;
 
-import 'package:zip2/zip2.dart' show ZipFileEntry, ZipEntryItorExt;
+import 'package:zip2/zip2.dart' show ZipArchive, ZipFileEntry, ZipEntryItorExt;
 
 Iterable<String> _expand(Iterable<String> files) sync* {
   for (final f in files) {
@@ -28,5 +28,6 @@ void main(List<String> argv) {
   if (entries.isEmpty) {
     return;
   }
-  entries.zip().pipe(File(target).openWrite());
+  final archive = ZipArchive(entries);
+  archive.zip().pipe(File(target).openWrite());
 }
