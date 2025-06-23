@@ -11,22 +11,32 @@ extension RamFileExt on RandomAccessFile {
     }
     return '';
   }
+}
 
-  Stream<List<int>> _readStream(int position, int length) async* {
+final class _FileData {
+  final StreamSink<List<int>> sink;
+  final int position;
+  final int length;
+
+  _FileData(this.sink, this.position, this.length);
+
+  Future<RandomAccessFile> readStream(RandomAccessFile file) async {
     const bufLength = 1 << 20;
     final end = position + length;
     var pos = position;
-    var f = this;
+    var f = file;
     while (pos + bufLength < end) {
       f = await f.setPosition(pos);
-      yield await f.read(bufLength);
+      sink.add(await f.read(bufLength));
       pos += bufLength;
     }
     final len = end - pos;
     if (len > 0) {
       f = await f.setPosition(pos);
-      yield await f.read(len);
+      sink.add(await f.read(len));
     }
+    await sink.close();
+    return f;
   }
 }
 
@@ -40,13 +50,29 @@ final class ZipDecoder {
   /// [file] A random access file representing the zipped file content.
   ///
   /// Returns a [Stream<ZipFileEntry>] containing the unzipped file entries.
-  ZipArchive unzip(RandomAccessFile file) => ZipArchive(_unzipFrom(file));
+  ZipArchive unzip(RandomAccessFile file) {
+    final items = _unzipFrom(file);
+    final entries = items.map((r) => r.$1);
+    final archive = ZipArchive(entries);
+    _readAsync(file, items.map((r) => r.$2));
+    return archive;
+  }
 
-  Iterable<ZipFileEntry> _unzipFrom(RandomAccessFile file) sync* {
+  Future<RandomAccessFile> _readAsync(
+      RandomAccessFile file, Iterable<_FileData> data) async {
+    var f = file;
+    for (final d in data) {
+      f = await d.readStream(f);
+    }
+    return f;
+  }
+
+  Iterable<(ZipFileEntry, _FileData)> _unzipFrom(RandomAccessFile file) {
     final r = _findCentralDirectory(file);
     final (centralDirectorySize, centralDirectoryOffset, numberOfEntries) = r;
     // Iterate through each entry in the Central Directory
     int currentCentralDirectoryOffset = centralDirectoryOffset;
+    final items = <(ZipFileEntry, _FileData)>[];
     for (int i = 0; i < numberOfEntries; i++) {
       file.setPositionSync(currentCentralDirectoryOffset);
       final headerBytes = file.readSync(_centralDirectoryFileHeaderBaseSize);
@@ -130,7 +156,8 @@ final class ZipDecoder {
 
       final fileDataLen = dataEndOffset - dataStartOffset;
       final compressed = compressionMethod == ZipMethod.deflated.method;
-      final rawStream = file._readStream(dataStartOffset, fileDataLen);
+      final ctrl = StreamController<List<int>>();
+      final rawStream = ctrl.stream;
       final fileDataStream = compressed
           ? rawStream.transform(_Decompressor(compressed))
           : rawStream;
@@ -146,8 +173,7 @@ final class ZipDecoder {
       final second = (lastModifiedTime & 0x1F) * 2;
       final lastModified = DateTime(year, month, day, hour, minute, second);
 
-      // Yield the constructed ZipFileEntry
-      yield ZipFileEntry(
+      final entry = ZipFileEntry(
         name: fileName,
         data: fileDataStream,
         lastModified: lastModified,
@@ -157,12 +183,21 @@ final class ZipDecoder {
         compressedSize: effectiveCompressedSize,
       );
 
+      /// Stream reading would change [RandomAccessFile], so we handle them later.
+      final data = _FileData(
+        ctrl.sink,
+        dataStartOffset,
+        fileDataLen,
+      );
+      items.add((entry, data));
+
       // Move to the next Central Directory entry
       currentCentralDirectoryOffset += _centralDirectoryFileHeaderBaseSize +
           fileNameLength +
           extraFieldLength +
           fileCommentLength;
     }
+    return items;
   }
 
   /// Find the End of Central Directory Record (EOCD) to locate the Central Directory.

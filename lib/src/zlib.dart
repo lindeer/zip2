@@ -1,4 +1,5 @@
-import 'dart:async' show Completer, StreamController, StreamTransformerBase;
+import 'dart:async'
+    show Completer, StreamController, StreamSink, StreamTransformerBase;
 import 'dart:convert' show utf8;
 import 'dart:io' show RandomAccessFile, ZLibDecoder, ZLibEncoder;
 import 'dart:math' as m;
