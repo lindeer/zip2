@@ -1,15 +1,14 @@
 name: zip2
-description: A starting point for Dart libraries or applications.
+description: A small zip library totally based on stream and transformer.
 version: 1.0.0
-# repository: https://github.com/my_org/my_repo
+repository: https://github.com/lindeer/zip2
 
 environment:
-  sdk: ^3.5.3
+  sdk: ^3.0.0
 
-# Add regular dependencies here.
 dependencies:
-  # path: ^1.8.0
+  path: ^1.9.1
 
 dev_dependencies:
-  lints: ^4.0.0
-  test: ^1.24.0
+  lints: ^5.0.0
+  test: ^1.26.2
