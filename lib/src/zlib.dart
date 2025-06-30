@@ -4,7 +4,6 @@ import 'dart:convert' show utf8;
 import 'dart:io' show RandomAccessFile, ZLibDecoder, ZLibEncoder;
 import 'dart:math' as m;
 import 'dart:typed_data' show ByteData, BytesBuilder, Endian, Uint8List;
-import 'package:meta/meta.dart' show visibleForTesting;
 
 import 'zip_file_entry.dart';
 
@@ -59,7 +58,6 @@ class _Crc32 {
   }
 }
 
-@visibleForTesting
 int crc32(List<int> bytes) => _Crc32.calculate(bytes);
 
 // Constants for ZIP file format signatures and offsets
@@ -75,6 +73,7 @@ const _centralDirectoryFileHeaderBaseSize = 46;
 // Without comment
 const _endOfCentralDirectoryBaseSize = 22;
 // CRC-32, compressed size, uncompressed size (no signature)
+// ignore: unused_element
 const _dataDescriptorSize = 12;
 // With signature
 const _dataDescriptorWithSignatureSize = 16;
