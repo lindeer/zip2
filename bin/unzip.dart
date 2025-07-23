@@ -6,11 +6,14 @@ import 'package:zip2/src/zlib.dart';
 
 Future<void> _unzip(ZipFileEntry entry) async {
   final f = entry.name;
-  final dir = Directory(p.dirname(f));
+  final isDirectory = f.endsWith('/');
+  final dir = Directory(isDirectory ? f : p.dirname(f));
   if (!dir.existsSync()) {
     dir.createSync(recursive: true);
   }
-  await entry.data.pipe(File(f).openWrite());
+  if (!isDirectory) {
+    await entry.data.pipe(File(f).openWrite());
+  }
 }
 
 void main(List<String> argv) async {
