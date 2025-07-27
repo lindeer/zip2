@@ -9,15 +9,18 @@ Future<void> _unzip(ZipFileEntry entry) async {
   final isDirectory = f.endsWith('/');
   final dir = Directory(isDirectory ? f : p.dirname(f));
   if (!dir.existsSync()) {
+    print("   creating: $f");
     dir.createSync(recursive: true);
   }
   if (!isDirectory) {
+    print("  inflating: $f");
     await entry.data.pipe(File(f).openWrite());
   }
 }
 
 void main(List<String> argv) async {
   for (final f in argv) {
+    print("Archive:  $f");
     final entries = File(f).openSync(mode: FileMode.read).unzip().entries;
     for (final entry in entries) {
       await _unzip(entry);

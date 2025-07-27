@@ -54,7 +54,7 @@ final class ZipDecoder {
     final items = _unzipFrom(file);
     final entries = items.map((r) => r.$1);
     final archive = ZipArchive(entries);
-    _readAsync(file, items.map((r) => r.$2));
+    _readAsync(file, items.map((r) => r.$2).whereType<_FileData>());
     return archive;
   }
 
@@ -67,12 +67,12 @@ final class ZipDecoder {
     return f;
   }
 
-  Iterable<(ZipFileEntry, _FileData)> _unzipFrom(RandomAccessFile file) {
+  Iterable<(ZipFileEntry, _FileData?)> _unzipFrom(RandomAccessFile file) {
     final r = _findCentralDirectory(file);
     final (centralDirectorySize, centralDirectoryOffset, numberOfEntries) = r;
     // Iterate through each entry in the Central Directory
     int currentCentralDirectoryOffset = centralDirectoryOffset;
-    final items = <(ZipFileEntry, _FileData)>[];
+    final items = <(ZipFileEntry, _FileData?)>[];
     for (int i = 0; i < numberOfEntries; i++) {
       file.setPositionSync(currentCentralDirectoryOffset);
       final headerBytes = file.readSync(_centralDirectoryFileHeaderBaseSize);
@@ -156,11 +156,27 @@ final class ZipDecoder {
 
       final fileDataLen = dataEndOffset - dataStartOffset;
       final compressed = compressionMethod == ZipMethod.deflated.method;
-      final ctrl = StreamController<List<int>>();
-      final rawStream = ctrl.stream;
-      final fileDataStream = compressed
-          ? rawStream.transform(_Decompressor(compressed))
-          : rawStream;
+      final isDirectory = fileName.endsWith('/');
+      final Stream<List<int>> fileDataStream;
+      _FileData? data;
+      if (isDirectory) {
+        fileDataStream = Stream.empty();
+        data = null;
+      } else {
+        final ctrl = StreamController<List<int>>();
+        final rawStream = ctrl.stream;
+        fileDataStream = compressed
+            ? rawStream.transform(_Decompressor(compressed))
+            : rawStream;
+
+        /// Stream reading would change [RandomAccessFile], so we handle them later.
+        data = _FileData(
+          ctrl.sink,
+          dataStartOffset,
+          fileDataLen,
+        );
+      }
+
 
       // Reconstruct DateTime object from DOS date and time fields
       final year = ((lastModifiedDate >> 9) & 0x7F) + 1980;
@@ -181,13 +197,6 @@ final class ZipDecoder {
         crc32: effectiveCrc32,
         uncompressedSize: effectiveUncompressedSize,
         compressedSize: effectiveCompressedSize,
-      );
-
-      /// Stream reading would change [RandomAccessFile], so we handle them later.
-      final data = _FileData(
-        ctrl.sink,
-        dataStartOffset,
-        fileDataLen,
       );
       items.add((entry, data));
 
