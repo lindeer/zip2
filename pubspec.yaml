@@ -10,6 +10,10 @@ topics:
 environment:
   sdk: ^3.0.0
 
+executables:
+  dzip: zip
+  undzip: unzip
+
 dependencies:
   path: ^1.9.1
 
