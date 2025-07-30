@@ -177,7 +177,6 @@ final class ZipDecoder {
         );
       }
 
-
       // Reconstruct DateTime object from DOS date and time fields
       final year = ((lastModifiedDate >> 9) & 0x7F) + 1980;
       final month = (lastModifiedDate >> 5) & 0x0F;
